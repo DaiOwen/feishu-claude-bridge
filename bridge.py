@@ -121,6 +121,8 @@ def send_reply(open_id: str, text: str):
         log(f"Reply failed: {data}")
         if data.get("code") == 230002:  # Message too long
             send_reply(open_id, text[:5000] + "\n\n... (truncated)")
+    else:
+        log(f"Reply sent -> open_id:{open_id}")
 
 
 def call_claude_chat(prompt: str) -> str:
