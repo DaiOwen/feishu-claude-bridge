@@ -1,5 +1,6 @@
 # Sensitive credentials
 bridge.private.py
+start_bridge.bat
 
 # Logs
 *.log
