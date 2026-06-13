@@ -39,10 +39,47 @@ ENCRYPT_KEY = os.environ.get("FEISHU_ENCRYPT_KEY", "")
 VERIFICATION_TOKEN = os.environ.get("FEISHU_VERIFICATION_TOKEN", "")
 
 # User whitelist: comma-separated Feishu open_ids.
-# If set, ONLY these users can use the bot. If empty, all enterprise
-# members can message the bot (default for enterprise self-built apps).
-# Find your open_id from bridge.log: look for "Reply sent -> open_id:ou_xxx..."
-ALLOWED_USERS = os.environ.get("FEISHU_ALLOWED_USERS", "").split(",") if os.environ.get("FEISHU_ALLOWED_USERS") else []
+# If ALLOWED_USERS is set, ONLY these users can use the bot.
+# If AUTO_WHITELIST is "1" (default) and ALLOWED_USERS is empty,
+# the FIRST user who messages the bot is automatically whitelisted.
+ALLOWED_USERS = (
+    os.environ.get("FEISHU_ALLOWED_USERS", "").split(",")
+    if os.environ.get("FEISHU_ALLOWED_USERS")
+    else []
+)
+AUTO_WHITELIST = os.environ.get("FEISHU_AUTO_WHITELIST", "1") == "1"
+_whitelist_file = Path(__file__).parent / ".whitelist"
+
+
+def check_and_whitelist(open_id: str) -> bool:
+    """Check if user is allowed; auto-whitelist first user if enabled."""
+    global ALLOWED_USERS
+
+    # If no whitelist configured, check auto-whitelist
+    if not ALLOWED_USERS:
+        if AUTO_WHITELIST:
+            # First user wins
+            ALLOWED_USERS = [open_id]
+            _whitelist_file.write_text(open_id)
+            log(f"[WHITELIST] Auto-whitelisted first user: {open_id}")
+            log(f"[WHITELIST] To lock permanently, set FEISHU_ALLOWED_USERS={open_id}")
+            return True
+        else:
+            # No whitelist, allow all
+            return True
+
+    # Check whitelist
+    if open_id in ALLOWED_USERS:
+        return True
+
+    # Also check persisted whitelist
+    if _whitelist_file.exists():
+        persisted = _whitelist_file.read_text().strip().split("\n")
+        if open_id in persisted:
+            ALLOWED_USERS = persisted
+            return True
+
+    return False
 
 # Working directory for Claude Code
 WORK_DIR = os.environ.get("CLAUDE_WORK_DIR", str(Path.home()))
@@ -337,8 +374,8 @@ def on_im_message_receive(event: P2ImMessageReceiveV1):
         if not open_id:
             return
 
-        # Whitelist check
-        if ALLOWED_USERS and open_id not in ALLOWED_USERS:
+        # Whitelist check (auto-whitelists first user if enabled)
+        if not check_and_whitelist(open_id):
             log(f"[BLOCK] Unauthorized open_id: {open_id}")
             send_reply(open_id, "Sorry, you are not authorized to use this bot.")
             return
